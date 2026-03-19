@@ -311,8 +311,6 @@
     }
     .sync-status-box.ok  { background: rgba(34,197,94,0.08); border: 1px solid rgba(34,197,94,0.2); color: #86efac; }
     .sync-status-box.off { background: rgba(255,255,255,0.04); border: 1px solid var(--border); color: var(--muted); }
-    .sync-url-row { display: flex; gap: 8px; margin-top: 6px; }
-    .sync-url-row input { flex: 1; font-size: 12px; }
     .sync-help {
       background: rgba(99,102,241,0.06); border: 1px solid rgba(99,102,241,0.15);
       border-radius: 10px; padding: 14px; font-size: 12px; color: var(--muted);
@@ -536,34 +534,6 @@
       <span id="syncStatusText">연결되지 않음 — 기록이 이 기기에만 저장됩니다</span>
     </div>
 
-    <!-- URL 입력 -->
-    <div class="modal-label">Firebase Database URL</div>
-    <div class="sync-url-row">
-      <input type="text" id="syncUrlInput"
-        placeholder="https://your-project-default-rtdb.firebaseio.com" />
-      <button class="btn btn-primary btn-sm" onclick="connectFirebase()">연결</button>
-    </div>
-
-    <!-- 연결 해제 버튼 (연결된 경우만 표시) -->
-    <button class="btn-disconnect" id="disconnectBtn" style="display:none" onclick="disconnectFirebase()">
-      🔌 연결 해제 (로컬 저장 모드로 전환)
-    </button>
-
-    <!-- 설정 가이드 -->
-    <div class="sync-help">
-      <strong style="color:var(--text)">📋 Firebase 무료 설정 방법 (5분)</strong>
-      <ol>
-        <li><a href="https://console.firebase.google.com" target="_blank">console.firebase.google.com</a> 접속 → 구글 로그인</li>
-        <li><strong>프로젝트 추가</strong> 클릭 → 이름 입력 → 계속</li>
-        <li>좌측 메뉴 <strong>빌드 → Realtime Database</strong> → <strong>데이터베이스 만들기</strong></li>
-        <li>위치: <strong>asia-southeast1</strong> 선택 → 테스트 모드로 시작</li>
-        <li>생성된 URL 복사 (예: <code>https://xxx-default-rtdb.asia-southeast1.firebasedatabase.app</code>)</li>
-        <li>위 입력창에 붙여넣고 <strong>연결</strong> 클릭</li>
-      </ol>
-      <div style="margin-top:8px;color:var(--dim)">
-        ✅ 무료 플랜 기준 1GB 저장 / 10GB 전송 — 팀 대시보드로 수년간 충분합니다.
-      </div>
-    </div>
   </div>
 </div>
 
@@ -1089,8 +1059,6 @@ document.getElementById('pwInput').addEventListener('keydown', ev => {
 ════════════════════════════════════════ */
 function openSyncModal() {
   updateSyncModalUI();
-  document.getElementById('syncUrlInput').value =
-    'https://team-dashboard-b989c-default-rtdb.asia-southeast1.firebasedatabase.app';
   document.getElementById('syncOverlay').classList.add('open');
 }
 function closeSyncModal() {
@@ -1100,25 +1068,19 @@ function onSyncOverlayClick(e) {
   if (e.target === document.getElementById('syncOverlay')) closeSyncModal();
 }
 function updateSyncModalUI() {
-  const box   = document.getElementById('syncStatusBox');
-  const text  = document.getElementById('syncStatusText');
-  const discBtn = document.getElementById('disconnectBtn');
-  const dotM  = document.getElementById('syncDotModal');
+  const box  = document.getElementById('syncStatusBox');
+  const text = document.getElementById('syncStatusText');
+  const dotM = document.getElementById('syncDotModal');
   if (fbConnected) {
     box.className = 'sync-status-box ok';
     dotM.className = 'sync-dot connected';
-    text.textContent = `연결됨 — 모든 기기에서 실시간 동기화 중`;
-    discBtn.style.display = '';
+    text.textContent = '연결됨 — 모든 기기에서 실시간 동기화 중';
   } else {
     box.className = 'sync-status-box off';
     dotM.className = 'sync-dot';
-    text.textContent = '연결되지 않음 — 기록이 이 기기에만 저장됩니다';
-    discBtn.style.display = 'none';
+    text.textContent = '연결 중… 잠시 기다려 주세요';
   }
 }
-document.getElementById('syncUrlInput').addEventListener('keydown', ev => {
-  if (ev.key === 'Enter') connectFirebase();
-});
 
 /* ════════════════════════════════════════
    SUNDAY 23:55 AUTO-ARCHIVE
