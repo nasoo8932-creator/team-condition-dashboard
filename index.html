@@ -430,14 +430,14 @@
     <div class="size-row">
       <input type="number" id="teamSizeInput" min="1" max="200" value="5" />
       <span>명</span>
-      <button class="btn btn-primary btn-sm" onclick="saveTeamSize()">저장</button>
+      <button class="btn btn-primary btn-sm" onclick="openPwModal('teamSize')">저장</button>
     </div>
     <div class="size-desc">익명으로 진행되며, 인원 수는 통계 참고용입니다.</div>
 
     <hr class="modal-divider" />
 
     <div class="modal-label">데이터 관리</div>
-    <button class="btn-danger-full" onclick="openPwModal()">🗑️ 모든 기록 초기화</button>
+    <button class="btn-danger-full" onclick="openPwModal('reset')">🗑️ 모든 기록 초기화</button>
   </div>
 </div>
 
@@ -448,14 +448,14 @@
       <h2>🔒 관리자 확인</h2>
       <button class="modal-close" onclick="closePwModal()">✕</button>
     </div>
-    <p>모든 기록을 초기화하려면<br>관리자 비밀번호를 입력하세요.</p>
+    <p id="pwDesc">관리자 비밀번호를 입력하세요.</p>
     <div class="form-group" style="margin-bottom:0">
       <input type="password" id="pwInput" placeholder="비밀번호 입력" />
     </div>
     <div class="pw-error" id="pwError"></div>
     <div class="pw-actions">
       <button class="pw-cancel" onclick="closePwModal()">취소</button>
-      <button class="pw-confirm" onclick="confirmReset()">초기화</button>
+      <button class="pw-confirm" id="pwConfirmBtn" onclick="confirmPw()">확인</button>
     </div>
   </div>
 </div>
@@ -826,18 +826,36 @@ function saveTeamSize() {
 }
 
 /* ════════════════════════════════════════
-   PASSWORD & RESET MODAL
+   PASSWORD MODAL (공용 - 용도별 분기)
 ════════════════════════════════════════ */
-function openPwModal() {
+let pwPurpose = null; // 'reset' | 'teamSize'
+
+function openPwModal(purpose) {
+  pwPurpose = purpose;
   document.getElementById('pwInput').value = '';
   document.getElementById('pwError').textContent = '';
+
+  if (purpose === 'teamSize') {
+    const v = parseInt(document.getElementById('teamSizeInput').value, 10);
+    if (!v || v < 1 || v > 200) { showToast('1~200명 사이로 입력해주세요'); return; }
+    document.getElementById('pwDesc').innerHTML = `팀 인원을 <strong>${v}명</strong>으로 변경하려면<br>관리자 비밀번호를 입력하세요.`;
+    document.getElementById('pwConfirmBtn').textContent = '변경';
+    document.getElementById('pwConfirmBtn').style.background = '#6366f1';
+  } else {
+    document.getElementById('pwDesc').innerHTML = '모든 기록을 초기화하려면<br>관리자 비밀번호를 입력하세요.';
+    document.getElementById('pwConfirmBtn').textContent = '초기화';
+    document.getElementById('pwConfirmBtn').style.background = '#ef4444';
+  }
+
   document.getElementById('pwOverlay').classList.add('open');
   setTimeout(() => document.getElementById('pwInput').focus(), 150);
 }
+
 function closePwModal() {
   document.getElementById('pwOverlay').classList.remove('open');
 }
-function confirmReset() {
+
+function confirmPw() {
   const pw = document.getElementById('pwInput').value;
   if (pw !== PW) {
     document.getElementById('pwError').textContent = '❌ 비밀번호가 올바르지 않습니다';
@@ -845,16 +863,28 @@ function confirmReset() {
     document.getElementById('pwInput').focus();
     return;
   }
-  state.entries = [];
-  state.weeklyArchived = [];
-  save();
-  closePwModal();
-  closeTeamModal();
-  renderAll();
-  showToast('🗑️ 모든 기록이 초기화됐어요');
+
+  if (pwPurpose === 'teamSize') {
+    const v = parseInt(document.getElementById('teamSizeInput').value, 10);
+    state.teamSize = v;
+    save();
+    closePwModal();
+    closeTeamModal();
+    renderTeamSizeInfo();
+    showToast(`팀 인원이 ${v}명으로 설정됐어요 👥`);
+  } else {
+    state.entries = [];
+    state.weeklyArchived = [];
+    save();
+    closePwModal();
+    closeTeamModal();
+    renderAll();
+    showToast('🗑️ 모든 기록이 초기화됐어요');
+  }
 }
+
 document.getElementById('pwInput').addEventListener('keydown', ev => {
-  if (ev.key === 'Enter') confirmReset();
+  if (ev.key === 'Enter') confirmPw();
   if (ev.key === 'Escape') closePwModal();
 });
 
