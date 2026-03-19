@@ -580,6 +580,7 @@ const EMOTIONS = [
 const PW = 'xlookup_win';
 const STORAGE_KEY = 'tcd-v3';
 const FB_URL_KEY  = 'tcd-firebase-url';
+const FB_DEFAULT  = 'https://team-dashboard-b989c-default-rtdb.asia-southeast1.firebasedatabase.app';
 
 /* ════════════════════════════════════════
    STATE
@@ -601,7 +602,7 @@ let fbPollTimer  = null;
 let fbLastMod    = 0;    // last known remote lastModified
 
 function initFirebaseFromStorage() {
-  const url = localStorage.getItem(FB_URL_KEY) || '';
+  const url = localStorage.getItem(FB_URL_KEY) || FB_DEFAULT;
   if (url) connectFirebase(url, true); // silent = true (no toast)
 }
 
