@@ -43,10 +43,9 @@
 
     /* ── HEADER ── */
     .header {
-      display: grid;
-      grid-template-columns: auto 1fr auto;
+      display: flex;
       align-items: center;
-      gap: 24px;
+      gap: 18px;
       margin-bottom: 24px;
       padding-bottom: 18px;
       border-bottom: 1px solid var(--border);
@@ -56,21 +55,21 @@
       background: linear-gradient(130deg, #818cf8 0%, #c084fc 100%);
       -webkit-background-clip: text; -webkit-text-fill-color: transparent;
       background-clip: text;
+      white-space: nowrap;
     }
     .hd-brand small {
       display: block; font-size: 10px; color: var(--dim); margin-top: 3px; letter-spacing: .03em;
     }
     .hd-lyric {
       font-family: 'Gowun Batang', serif;
-      font-size: 15px;
-      color: rgba(180,200,255,0.55);
-      text-align: center;
-      letter-spacing: .06em;
-      line-height: 1.7;
-      padding: 0 12px;
+      font-size: 17px;
+      color: rgba(180,200,255,0.65);
+      letter-spacing: .07em;
+      line-height: 1.6;
+      white-space: nowrap;
     }
     .hd-right {
-      display: flex; align-items: center; gap: 10px; justify-content: flex-end;
+      display: flex; align-items: center; gap: 10px; justify-content: flex-end; margin-left: auto;
     }
     .clock-box { text-align: right; line-height: 1.5; }
     .clock-date { font-size: 11px; color: var(--muted); }
@@ -344,17 +343,16 @@
     /* ── RESPONSIVE ── */
     @media (max-width: 1120px) {
       .main-grid { grid-template-columns: 1fr; }
-      .header { grid-template-columns: 1fr auto; grid-template-rows: auto auto; gap: 10px 16px; }
-      .hd-brand { grid-column: 1; grid-row: 1; }
-      .hd-right { grid-column: 2; grid-row: 1; }
-      .hd-lyric { grid-column: 1 / -1; grid-row: 2; text-align: left; font-size: 13px; }
+      .hd-lyric { font-size: 14px; }
     }
-    @media (max-width: 700px) {
-      .header { grid-template-columns: 1fr; }
-      .hd-brand { grid-column: 1; grid-row: 1; }
-      .hd-right { grid-column: 1; grid-row: 2; justify-content: flex-start; flex-wrap: wrap; }
-      .hd-lyric { grid-column: 1; grid-row: 3; }
+    @media (max-width: 800px) {
+      .header { flex-wrap: wrap; gap: 10px; }
+      .hd-lyric { font-size: 13px; order: 3; flex-basis: 100%; }
+      .hd-right { margin-left: auto; }
       .clock-box { display: none; }
+    }
+    @media (max-width: 500px) {
+      .hd-lyric { display: none; }
     }
     @media (max-width: 600px) {
       .app { padding: 12px; }
@@ -372,9 +370,13 @@
       <small id="hdDate">로딩 중…</small>
     </div>
 
-    <div class="hd-lyric">
-      이번 주의 나, 어떤 기분으로 지나왔나요
-    </div>
+    <div class="hd-lyric">이번 주의 나, 어떤 기분으로 지나왔나요</div>
+
+    <button class="btn btn-ghost" onclick="openSyncModal()" title="클라우드 동기화 설정"
+      style="display:flex;align-items:center;gap:7px;white-space:nowrap;flex-shrink:0">
+      <div class="sync-dot" id="syncDot"></div>
+      <span>🔗 동기화</span>
+    </button>
 
     <div class="hd-right">
       <div class="clock-box">
@@ -382,11 +384,6 @@
         <div class="clock-time" id="hdTime"></div>
       </div>
       <button class="btn btn-ghost" onclick="openTeamModal()">👥 팀원 관리</button>
-      <button class="btn btn-ghost" onclick="openSyncModal()" title="클라우드 동기화 설정"
-        style="display:flex;align-items:center;gap:7px;white-space:nowrap">
-        <div class="sync-dot" id="syncDot"></div>
-        <span>🔗 동기화</span>
-      </button>
     </div>
   </header>
 
@@ -526,6 +523,15 @@
       <button class="modal-close" onclick="closeSyncModal()">✕</button>
     </div>
 
+    <!-- 안내 배너 -->
+    <div style="background:rgba(255,200,100,0.08);border:1px solid rgba(255,200,100,0.25);border-radius:10px;padding:12px 14px;margin-bottom:14px;font-size:12px;color:rgba(255,220,150,0.9);line-height:1.7;">
+      🔴 동기화에 빨간불이 뜨면 아래 URL을 입력란에 붙여넣으세요
+      <div style="display:flex;align-items:center;gap:8px;margin-top:8px;">
+        <code id="fbUrlHint" style="flex:1;font-size:11px;background:rgba(0,0,0,0.3);padding:5px 8px;border-radius:6px;color:#a5f3fc;word-break:break-all;">https://team-dashboard-b9896-default-rtdb.asia-southeast1.firebasedatabase.app</code>
+        <button onclick="copyFbUrl()" style="flex-shrink:0;padding:5px 10px;font-size:11px;background:rgba(99,102,241,0.3);border:1px solid rgba(99,102,241,0.5);border-radius:6px;color:#a5b4fc;cursor:pointer;white-space:nowrap;">📋 복사</button>
+      </div>
+    </div>
+
     <!-- 현재 연결 상태 -->
     <div id="syncStatusBox" class="sync-status-box off">
       <div class="sync-dot" id="syncDotModal"></div>
@@ -567,9 +573,11 @@ const STORAGE_KEY = 'tcd-v3';
 
 /* ── Firebase REST API 설정 ── */
 const FB_URL_KEY   = 'tcd-fb-url';
+const FB_HINT_BASE = 'https://team-dashboard-b9896-default-rtdb.asia-southeast1.firebasedatabase.app';
 const FB_CANDIDATES = [
+  FB_HINT_BASE + '/tcd.json',
   'https://team-dashboard-b989c-default-rtdb.asia-southeast1.firebasedatabase.app/tcd.json',
-  'https://team-dashboard-b989c-default-rtdb.firebaseio.com/tcd.json',
+  'https://team-dashboard-b9896-default-rtdb.firebaseio.com/tcd.json',
 ];
 let FB_URL = localStorage.getItem(FB_URL_KEY) || '';
 
@@ -696,6 +704,20 @@ async function applyManualUrl() {
 
 function connectFirebase() { closeSyncModal(); }
 function disconnectFirebase() { showToast('자동 동기화 방식입니다'); }
+
+function copyFbUrl() {
+  navigator.clipboard.writeText(FB_HINT_BASE).then(() => {
+    showToast('✅ URL이 복사됐습니다! 아래 입력란에 붙여넣기 하세요');
+  }).catch(() => {
+    // 클립보드 API 미지원 시 폴백
+    const el = document.getElementById('fbUrlHint');
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    window.getSelection().removeAllRanges();
+    window.getSelection().addRange(range);
+    showToast('텍스트를 선택했습니다. Ctrl+C로 복사하세요');
+  });
+}
 
 
 
