@@ -604,10 +604,11 @@ let fbConnected = false;
 let fbPollTimer = null;
 let fbLastMod   = 0;
 
-// 앱 시작 시 자동 연결 + 5초마다 폴링 (연결 안 돼도 계속 재시도)
+// 앱 시작 시 자동 연결 + 5초마다 폴링
+// FB_DEFAULT가 있으면 항상 그것을 사용 (localStorage 무시 — 잘못된 값 방지)
 function initFirebaseFromStorage() {
-  fbUrl = localStorage.getItem(FB_URL_KEY) || FB_DEFAULT;
-  localStorage.setItem(FB_URL_KEY, fbUrl); // 항상 저장
+  fbUrl = FB_DEFAULT;
+  localStorage.removeItem(FB_URL_KEY); // 잘못 저장된 이전 URL 제거
   startFbPolling();
 }
 
