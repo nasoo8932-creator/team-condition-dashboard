@@ -584,16 +584,32 @@ let fbConnected = false;
 function initFirebaseFromStorage() {
   setSyncDot('syncing');
 
+  // 10초 내 연결 안 되면 오류 표시
+  const connTimeout = setTimeout(() => {
+    if (!fbConnected) {
+      setSyncDot('error');
+      fbConnected = false;
+      updateSyncModalUI();
+      console.warn('Firebase 연결 타임아웃 — 로컬 저장 모드로 동작합니다');
+    }
+  }, 10000);
+
+  // 연결 상태 모니터링
+  fbDB.ref('.info/connected').on('value', (snap) => {
+    if (snap.val() === true) {
+      clearTimeout(connTimeout);
+      fbConnected = true;
+      setSyncDot('connected');
+    } else {
+      fbConnected = false;
+      if (connTimeout._destroyed) setSyncDot('syncing');
+    }
+    updateSyncModalUI();
+  });
+
   // 실시간 리스너 — 데이터 변경 시 자동 반영
   fbRef.on('value', (snapshot) => {
     const data = snapshot.val();
-
-    if (!fbConnected) {
-      fbConnected = true;
-      setSyncDot('connected');
-      updateSyncModalUI();
-    }
-
     if (data) {
       const remote = data.lastModified || 0;
       const local  = state.lastModified || 0;
@@ -607,23 +623,10 @@ function initFirebaseFromStorage() {
       }
     }
   }, (err) => {
-    // 연결 오류 시
     fbConnected = false;
     setSyncDot('error');
     updateSyncModalUI();
     console.error('Firebase 연결 오류:', err.message);
-  });
-
-  // 연결 상태 모니터링
-  fbDB.ref('.info/connected').on('value', (snap) => {
-    if (snap.val() === true) {
-      fbConnected = true;
-      setSyncDot('connected');
-    } else {
-      fbConnected = false;
-      setSyncDot('syncing'); // 재연결 중
-    }
-    updateSyncModalUI();
   });
 }
 
@@ -1071,10 +1074,17 @@ function updateSyncModalUI() {
   const box  = document.getElementById('syncStatusBox');
   const text = document.getElementById('syncStatusText');
   const dotM = document.getElementById('syncDotModal');
+  const dot  = document.getElementById('syncDot');
+  const dotState = dot ? dot.className.replace('sync-dot','').trim() : '';
   if (fbConnected) {
     box.className = 'sync-status-box ok';
     dotM.className = 'sync-dot connected';
     text.textContent = '연결됨 — 모든 기기에서 실시간 동기화 중';
+  } else if (dotState === 'error') {
+    box.className = 'sync-status-box off';
+    dotM.className = 'sync-dot error';
+    text.innerHTML = '연결 실패 — Firebase 규칙을 확인해 주세요<br>'
+      + '<small style="color:var(--dim)">Firebase Console → Realtime Database → 규칙 탭 → read/write를 <b>true</b>로 설정</small>';
   } else {
     box.className = 'sync-status-box off';
     dotM.className = 'sync-dot';
