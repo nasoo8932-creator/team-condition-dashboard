@@ -1,0 +1,913 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>팀 컨디션 대시보드</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700;900&family=Gowun+Batang:wght@400;700&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      #06101e;
+      --bg2:     #0c1d34;
+      --card:    rgba(255,255,255,0.038);
+      --card-h:  rgba(255,255,255,0.065);
+      --border:  rgba(255,255,255,0.08);
+      --text:    #eef2f8;
+      --muted:   #8a9bba;
+      --dim:     #3f5370;
+      --primary: #6366f1;
+      --pglow:   rgba(99,102,241,0.28);
+      --r:       16px;
+      --rs:      10px;
+      --sh:      0 8px 32px rgba(0,0,0,0.5);
+    }
+
+    body {
+      font-family: 'Noto Sans KR', -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    /* ── APP ── */
+    .app { max-width: 1500px; margin: 0 auto; padding: 20px 24px 40px; }
+
+    /* ── HEADER ── */
+    .header {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      align-items: center;
+      gap: 24px;
+      margin-bottom: 24px;
+      padding-bottom: 18px;
+      border-bottom: 1px solid var(--border);
+    }
+    .hd-brand h1 {
+      font-size: 20px; font-weight: 900;
+      background: linear-gradient(130deg, #818cf8 0%, #c084fc 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .hd-brand small {
+      display: block; font-size: 10px; color: var(--dim); margin-top: 3px; letter-spacing: .03em;
+    }
+    .hd-lyric {
+      font-family: 'Gowun Batang', serif;
+      font-size: 15px;
+      color: rgba(180,200,255,0.55);
+      text-align: center;
+      letter-spacing: .06em;
+      line-height: 1.7;
+      padding: 0 12px;
+    }
+    .hd-right {
+      display: flex; align-items: center; gap: 10px; justify-content: flex-end;
+    }
+    .clock-box { text-align: right; line-height: 1.5; }
+    .clock-date { font-size: 11px; color: var(--muted); }
+    .clock-time { font-size: 14px; font-weight: 700; }
+
+    /* ── BUTTONS ── */
+    .btn {
+      padding: 8px 15px; border-radius: 8px; border: none; cursor: pointer;
+      font-size: 12px; font-weight: 600; font-family: inherit; transition: all .2s; white-space: nowrap;
+    }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-primary:hover { background: #4f46e5; transform: translateY(-1px); box-shadow: 0 4px 16px var(--pglow); }
+    .btn-ghost { background: var(--card); color: var(--text); border: 1px solid var(--border); }
+    .btn-ghost:hover { background: var(--card-h); }
+    .btn-sm { padding: 6px 12px; font-size: 11px; }
+
+    /* ── MAIN LAYOUT: 2 columns ── */
+    .main-grid {
+      display: grid;
+      grid-template-columns: 1fr 390px;
+      gap: 20px;
+      align-items: start;
+    }
+    .left-col { display: flex; flex-direction: column; gap: 16px; }
+    .right-col { display: flex; flex-direction: column; gap: 16px; }
+
+    /* ── CARD ── */
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 20px;
+    }
+    .card-head {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 14px;
+    }
+    .card-title {
+      font-size: 11px; font-weight: 700; color: var(--muted);
+      text-transform: uppercase; letter-spacing: .08em;
+    }
+    .badge {
+      font-size: 10px; font-weight: 600;
+      background: rgba(99,102,241,0.14); color: #a5b4fc;
+      border: 1px solid rgba(99,102,241,0.2);
+      padding: 2px 9px; border-radius: 20px; letter-spacing: .02em;
+    }
+    .badge-green {
+      background: rgba(16,185,129,0.12); color: #34d399;
+      border-color: rgba(16,185,129,0.2);
+    }
+    .week-tag {
+      font-size: 11px; color: var(--dim); font-weight: 500;
+    }
+
+    /* ── YEAR/MONTH TABLE ── */
+    .month-scroll { max-height: 195px; overflow-y: auto; overflow-x: auto; }
+    .month-table { width: 100%; border-collapse: collapse; font-size: 12px; min-width: 480px; }
+    .month-table thead th {
+      position: sticky; top: 0; background: #0c1d34;
+      padding: 8px 10px; text-align: center;
+      color: var(--muted); font-weight: 700;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap; font-size: 11px;
+    }
+    .month-table thead th:first-child { text-align: left; }
+    .month-table tbody td {
+      padding: 7px 10px; text-align: center;
+      border-bottom: 1px solid rgba(255,255,255,0.035);
+    }
+    .month-table tbody td:first-child { text-align: left; color: var(--muted); font-weight: 500; font-size: 11px; }
+    .month-table tbody tr:last-child td { border-bottom: none; }
+    .month-table .tc-total { font-weight: 800; color: var(--text); }
+    .tc-great    { color: #22c55e; font-weight: 600; }
+    .tc-okay     { color: #84cc16; font-weight: 600; }
+    .tc-normal   { color: #94a3b8; font-weight: 600; }
+    .tc-tired    { color: #f59e0b; font-weight: 600; }
+    .tc-stressed { color: #f97316; font-weight: 600; }
+    .tc-troubled { color: #ef4444; font-weight: 600; }
+    .month-empty { text-align: center; padding: 28px; color: var(--dim); font-size: 12px; }
+
+    /* ── WEEKLY CHART ── */
+    .chart-wrap { position: relative; height: 360px; }
+    .chart-empty {
+      height: 360px; display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 10px; color: var(--dim); font-size: 12px;
+    }
+    .chart-empty .cei { font-size: 36px; }
+
+    /* ── EMOTION BUTTONS (RIGHT, LARGE) ── */
+    .emo-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 9px;
+      margin-bottom: 14px;
+    }
+    .emo-btn {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 7px; padding: 18px 8px;
+      border-radius: 14px;
+      border: 2px solid rgba(255,255,255,0.06);
+      background: rgba(255,255,255,0.04);
+      cursor: pointer; transition: all .18s; font-family: inherit;
+    }
+    .emo-btn:hover { background: rgba(255,255,255,0.1); transform: translateY(-2px); }
+    .emo-btn.sel {
+      border-color: #818cf8;
+      background: rgba(99,102,241,0.18);
+      box-shadow: 0 0 0 1px rgba(99,102,241,0.35), 0 6px 20px rgba(99,102,241,0.18);
+    }
+    .emo-btn .ee { font-size: 38px; line-height: 1; }
+    .emo-btn .el { font-size: 11px; color: var(--muted); font-weight: 600; }
+    .emo-btn.sel .el { color: #c7d2fe; }
+
+    /* ── FORM ── */
+    .form-group { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
+    .form-group label { font-size: 11px; color: var(--muted); font-weight: 700; letter-spacing: .04em; }
+    input[type="text"],
+    input[type="password"],
+    input[type="number"] {
+      background: rgba(255,255,255,0.06);
+      border: 1px solid var(--border);
+      border-radius: var(--rs);
+      color: var(--text); padding: 10px 13px;
+      font-size: 13px; font-family: inherit;
+      outline: none; transition: border-color .2s; width: 100%;
+    }
+    input:focus { border-color: var(--primary); }
+    .submit-btn {
+      width: 100%; padding: 14px;
+      background: var(--primary); color: #fff;
+      border: none; border-radius: 12px;
+      font-size: 15px; font-weight: 800; font-family: inherit;
+      cursor: pointer; transition: all .2s; letter-spacing: .02em;
+    }
+    .submit-btn:hover { background: #4f46e5; box-shadow: 0 6px 24px var(--pglow); transform: translateY(-1px); }
+
+    /* ── WEEKLY MESSAGES ── */
+    .msg-list { display: flex; flex-direction: column; gap: 8px; max-height: 300px; overflow-y: auto; }
+    .msg-item {
+      display: flex; align-items: flex-start; gap: 10px;
+      padding: 10px 13px;
+      background: rgba(255,255,255,0.025);
+      border-radius: 10px;
+      border-left: 3px solid var(--dim);
+    }
+    .msg-emoji { font-size: 22px; flex-shrink: 0; line-height: 1.2; }
+    .msg-body { flex: 1; min-width: 0; }
+    .msg-text { font-size: 13px; line-height: 1.55; word-break: break-word; }
+    .msg-time { font-size: 10px; color: var(--dim); margin-top: 3px; }
+
+    /* ── EMPTY ── */
+    .empty { text-align: center; padding: 28px 16px; color: var(--dim); font-size: 12px; }
+    .empty .ei { font-size: 30px; margin-bottom: 8px; }
+
+    /* ── ARCHIVE NOTICE ── */
+    .archive-notice {
+      background: rgba(16,185,129,0.06);
+      border: 1px solid rgba(16,185,129,0.18);
+      border-radius: 10px; padding: 10px 14px;
+      font-size: 12px; color: #6ee7b7;
+      display: none; align-items: center; gap: 8px; margin-top: 12px;
+    }
+    .archive-notice.visible { display: flex; }
+
+    /* ── MODALS ── */
+    .overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.75); backdrop-filter: blur(6px);
+      z-index: 200; display: flex; align-items: center; justify-content: center;
+      opacity: 0; pointer-events: none; transition: opacity .3s;
+    }
+    .overlay.open { opacity: 1; pointer-events: all; }
+    .modal {
+      background: #0b1e36; border: 1px solid var(--border);
+      border-radius: 20px; padding: 28px; width: 420px; max-width: 92vw;
+      transform: scale(.92); transition: transform .3s; box-shadow: var(--sh);
+    }
+    .overlay.open .modal { transform: scale(1); }
+    .modal-head {
+      display: flex; align-items: center; justify-content: space-between; margin-bottom: 22px;
+    }
+    .modal-head h2 { font-size: 17px; font-weight: 800; }
+    .modal-close {
+      background: none; border: none; color: var(--muted); cursor: pointer;
+      font-size: 18px; line-height: 1; padding: 4px;
+    }
+    .modal-divider { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
+    .modal-label { font-size: 11px; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: .07em; margin-bottom: 10px; }
+    .size-row { display: flex; align-items: center; gap: 10px; }
+    .size-row input[type="number"] { width: 80px; text-align: center; font-size: 16px; font-weight: 800; }
+    .size-row span { font-size: 14px; color: var(--muted); }
+    .size-desc { font-size: 11px; color: var(--dim); margin-top: 6px; line-height: 1.5; }
+
+    .btn-danger-full {
+      width: 100%; padding: 10px;
+      background: rgba(239,68,68,0.08); color: #f87171;
+      border: 1px solid rgba(239,68,68,0.2);
+      border-radius: 8px; cursor: pointer;
+      font-size: 12px; font-family: inherit; transition: all .2s;
+    }
+    .btn-danger-full:hover { background: rgba(239,68,68,0.18); }
+
+    /* PW modal */
+    .pw-modal { width: 360px; }
+    .pw-modal p { font-size: 13px; color: var(--muted); margin-bottom: 14px; line-height: 1.6; }
+    .pw-error { font-size: 12px; color: #f87171; margin-top: 8px; min-height: 16px; }
+    .pw-actions { display: flex; gap: 8px; margin-top: 14px; }
+    .pw-actions button {
+      flex: 1; padding: 11px; border-radius: 9px; border: none;
+      font-family: inherit; font-size: 13px; font-weight: 700; cursor: pointer; transition: all .2s;
+    }
+    .pw-cancel { background: var(--card); color: var(--text); border: 1px solid var(--border) !important; }
+    .pw-confirm { background: #ef4444; color: #fff; }
+    .pw-confirm:hover { background: #dc2626; }
+
+    /* ── TOAST ── */
+    .toast {
+      position: fixed; bottom: 24px; right: 24px;
+      padding: 12px 18px; background: #0b1e36;
+      border: 1px solid var(--border); border-radius: 12px;
+      font-size: 13px; box-shadow: var(--sh);
+      transform: translateY(60px); opacity: 0; transition: all .35s; z-index: 500;
+      max-width: 320px;
+    }
+    .toast.show { transform: translateY(0); opacity: 1; }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 1120px) {
+      .main-grid { grid-template-columns: 1fr; }
+      .header { grid-template-columns: auto 1fr; grid-template-rows: auto auto; }
+      .hd-lyric { grid-column: 1 / -1; text-align: left; font-size: 13px; }
+      .hd-right { grid-column: 2; grid-row: 1; }
+    }
+    @media (max-width: 600px) {
+      .app { padding: 12px; }
+      .emo-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+  </style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ════ HEADER ════ -->
+  <header class="header">
+    <div class="hd-brand">
+      <h1>🏢 팀 컨디션 대시보드</h1>
+      <small id="hdDate">로딩 중…</small>
+    </div>
+
+    <div class="hd-lyric">
+      이번 주의 나, 어떤 기분으로 지나왔나요
+    </div>
+
+    <div class="hd-right">
+      <div class="clock-box">
+        <div class="clock-date" id="hdDate2"></div>
+        <div class="clock-time" id="hdTime"></div>
+      </div>
+      <button class="btn btn-ghost" onclick="openTeamModal()">👥 팀원 관리</button>
+    </div>
+  </header>
+
+  <!-- ════ MAIN GRID ════ -->
+  <div class="main-grid">
+
+    <!-- ── LEFT: 연/월 요약 + 주차별 흐름 ── -->
+    <div class="left-col">
+
+      <!-- 연/월별 요약 -->
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">연 / 월별 요약</span>
+          <span class="badge" id="totalBadge">전체 0건</span>
+        </div>
+        <div class="month-scroll">
+          <table class="month-table">
+            <thead>
+              <tr>
+                <th>기간</th>
+                <th>😊 좋음</th>
+                <th>🙂 무난</th>
+                <th>😐 보통</th>
+                <th>😕 피곤</th>
+                <th>😟 스트레스</th>
+                <th>😣 고민</th>
+                <th>합계</th>
+              </tr>
+            </thead>
+            <tbody id="monthTbody">
+              <tr><td colspan="8" class="month-empty">아직 기록이 없어요</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 주차별 감정 흐름 -->
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">주차별 감정 흐름</span>
+          <span class="badge badge-green" id="archiveBadge" style="display:none">✅ 이번 주 저장됨</span>
+        </div>
+        <div id="chartArea">
+          <div class="chart-empty">
+            <div class="cei">📊</div>
+            <div>기록이 쌓이면 주차별 흐름이 표시됩니다</div>
+          </div>
+        </div>
+
+        <div class="archive-notice" id="archiveNotice">
+          ✅ 이번 주(일요일 23:55) 데이터가 안전하게 저장됐어요.
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ── RIGHT: 감정 입력 + 한마디 ── -->
+    <div class="right-col">
+
+      <!-- 감정 입력 (크게) -->
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">이번 주 컨디션 기록</span>
+          <span class="week-tag" id="weekTag"></span>
+        </div>
+        <div class="emo-grid" id="emoGrid"></div>
+        <div class="form-group">
+          <label>이번 주 한마디 (선택)</label>
+          <input type="text" id="noteInput" placeholder="짧게 한마디 남겨요…" maxlength="80" />
+        </div>
+        <button class="submit-btn" onclick="submitEmotion()">✨ 기록하기</button>
+        <div style="margin-top:10px;font-size:11px;color:var(--dim);text-align:center" id="teamSizeInfo"></div>
+      </div>
+
+      <!-- 이번 한주 한마디 -->
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">이번 한주 한마디</span>
+          <span class="badge" id="msgBadge">0개</span>
+        </div>
+        <div class="msg-list" id="msgList">
+          <div class="empty"><div class="ei">💬</div>이번 주 한마디를 남겨보세요</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ════ TEAM MODAL ════ -->
+<div class="overlay" id="teamOverlay" onclick="onTeamOverlayClick(event)">
+  <div class="modal">
+    <div class="modal-head">
+      <h2>👥 팀원 관리</h2>
+      <button class="modal-close" onclick="closeTeamModal()">✕</button>
+    </div>
+
+    <div class="modal-label">팀 인원 설정</div>
+    <div class="size-row">
+      <input type="number" id="teamSizeInput" min="1" max="200" value="5" />
+      <span>명</span>
+      <button class="btn btn-primary btn-sm" onclick="saveTeamSize()">저장</button>
+    </div>
+    <div class="size-desc">익명으로 진행되며, 인원 수는 통계 참고용입니다.</div>
+
+    <hr class="modal-divider" />
+
+    <div class="modal-label">데이터 관리</div>
+    <button class="btn-danger-full" onclick="openPwModal()">🗑️ 모든 기록 초기화</button>
+  </div>
+</div>
+
+<!-- ════ PASSWORD MODAL ════ -->
+<div class="overlay" id="pwOverlay">
+  <div class="modal pw-modal">
+    <div class="modal-head">
+      <h2>🔒 관리자 확인</h2>
+      <button class="modal-close" onclick="closePwModal()">✕</button>
+    </div>
+    <p>모든 기록을 초기화하려면<br>관리자 비밀번호를 입력하세요.</p>
+    <div class="form-group" style="margin-bottom:0">
+      <input type="password" id="pwInput" placeholder="비밀번호 입력" />
+    </div>
+    <div class="pw-error" id="pwError"></div>
+    <div class="pw-actions">
+      <button class="pw-cancel" onclick="closePwModal()">취소</button>
+      <button class="pw-confirm" onclick="confirmReset()">초기화</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<script>
+/* ════════════════════════════════════════
+   CONSTANTS
+════════════════════════════════════════ */
+const EMOTIONS = [
+  { id: 'great',    emoji: '😊', label: '좋음',      score:  2, color: '#22c55e' },
+  { id: 'okay',     emoji: '🙂', label: '무난',      score:  1, color: '#84cc16' },
+  { id: 'normal',   emoji: '😐', label: '보통',      score:  0, color: '#94a3b8' },
+  { id: 'tired',    emoji: '😕', label: '피곤/지침', score: -1, color: '#f59e0b' },
+  { id: 'stressed', emoji: '😟', label: '스트레스',  score: -2, color: '#f97316' },
+  { id: 'troubled', emoji: '😣', label: '고민/이슈', score: -2, color: '#ef4444' },
+];
+const PW = 'xlookup_win';
+const STORAGE_KEY = 'tcd-v3';
+
+/* ════════════════════════════════════════
+   STATE
+════════════════════════════════════════ */
+let state = {
+  teamSize: 5,
+  entries: [],        // { id, eid, note, ts }
+  weeklyArchived: [], // weekKeys archived on Sunday 23:55
+};
+let selectedEmo = null;
+let weeklyChart = null;
+
+/* ════════════════════════════════════════
+   INIT
+════════════════════════════════════════ */
+function init() {
+  load();
+  renderAll();
+  tick();
+  setInterval(tick, 1000);
+  setInterval(checkWeeklyArchive, 60000);
+  checkWeeklyArchive();
+}
+
+function uid() { return Math.random().toString(36).slice(2, 11); }
+
+function load() {
+  try {
+    const s = localStorage.getItem(STORAGE_KEY);
+    if (s) {
+      const parsed = JSON.parse(s);
+      state = { ...state, ...parsed };
+    }
+  } catch (_) {}
+}
+
+function save() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+/* ════════════════════════════════════════
+   WEEK / MONTH HELPERS  (Monday-based week)
+════════════════════════════════════════ */
+function getWeekKey(ts) {
+  const d = ts ? new Date(ts) : new Date();
+  const day = d.getDay(); // 0=Sun
+  const daysToMon = day === 0 ? -6 : 1 - day;
+  const mon = new Date(d.getFullYear(), d.getMonth(), d.getDate() + daysToMon);
+  const y = mon.getFullYear();
+  const m = String(mon.getMonth() + 1).padStart(2, '0');
+  const dd = String(mon.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dd}`; // e.g. "2026-03-16"
+}
+
+function parseWeekKey(wk) {
+  const [y, m, d] = wk.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
+function getWeekLabel(wk) {
+  const mon = parseWeekKey(wk);
+  const sun = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + 6);
+  const fmt = dt => `${dt.getMonth() + 1}/${dt.getDate()}`;
+  const currentYear = new Date().getFullYear();
+  const yearPrefix = mon.getFullYear() !== currentYear ? `${mon.getFullYear()}/` : '';
+  return `${yearPrefix}${fmt(mon)}~${fmt(sun)}`;
+}
+
+function getWeekRangeLabel(wk) {
+  const mon = parseWeekKey(wk);
+  const sun = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + 6);
+  const pad = n => String(n).padStart(2, '0');
+  return `${mon.getMonth()+1}/${pad(mon.getDate())}~${sun.getMonth()+1}/${pad(sun.getDate())}`;
+}
+
+function getMonthKey(ts) {
+  const d = new Date(ts);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function getMonthLabel(mk) {
+  const [y, m] = mk.split('-');
+  return `${y}년 ${parseInt(m)}월`;
+}
+
+/* ════════════════════════════════════════
+   CLOCK
+════════════════════════════════════════ */
+function tick() {
+  const n = new Date();
+  const days = ['일', '월', '화', '수', '목', '금', '토'];
+  const dateStr = `${n.getFullYear()}년 ${n.getMonth() + 1}월 ${n.getDate()}일 (${days[n.getDay()]})`;
+  document.getElementById('hdDate').textContent = dateStr;
+  document.getElementById('hdDate2').textContent = dateStr;
+  document.getElementById('hdTime').textContent =
+    n.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+/* ════════════════════════════════════════
+   RENDER ALL
+════════════════════════════════════════ */
+function renderAll() {
+  renderEmoGrid();
+  renderWeekTag();
+  renderMonthTable();
+  renderWeeklyChart();
+  renderWeeklyMessages();
+  renderTeamSizeInfo();
+}
+
+/* ── Emotion Grid ── */
+function renderEmoGrid() {
+  const g = document.getElementById('emoGrid');
+  g.innerHTML = '';
+  EMOTIONS.forEach(e => {
+    const b = document.createElement('button');
+    b.className = 'emo-btn' + (selectedEmo === e.id ? ' sel' : '');
+    b.innerHTML = `<span class="ee">${e.emoji}</span><span class="el">${e.label}</span>`;
+    b.onclick = () => { selectedEmo = e.id; renderEmoGrid(); };
+    g.appendChild(b);
+  });
+}
+
+/* ── Week Tag ── */
+function renderWeekTag() {
+  const wk = getWeekKey();
+  document.getElementById('weekTag').textContent = getWeekRangeLabel(wk);
+}
+
+/* ── Team Size Info ── */
+function renderTeamSizeInfo() {
+  const ts = state.teamSize;
+  const wk = getWeekKey();
+  const monDate = parseWeekKey(wk);
+  const weekEntries = state.entries.filter(e => e.ts >= monDate.getTime() && e.ts < monDate.getTime() + 7 * 86400000);
+  document.getElementById('teamSizeInfo').textContent =
+    `팀 ${ts}명 · 이번 주 ${weekEntries.length}건 기록됨`;
+}
+
+/* ── Year/Month Table ── */
+function renderMonthTable() {
+  const tbody = document.getElementById('monthTbody');
+  const total = state.entries.length;
+  document.getElementById('totalBadge').textContent = `전체 ${total}건`;
+
+  if (!total) {
+    tbody.innerHTML = '<tr><td colspan="8" class="month-empty">아직 기록이 없어요</td></tr>';
+    return;
+  }
+
+  // Group by month
+  const monthMap = {};
+  state.entries.forEach(e => {
+    const mk = getMonthKey(e.ts);
+    if (!monthMap[mk]) monthMap[mk] = {};
+    monthMap[mk][e.eid] = (monthMap[mk][e.eid] || 0) + 1;
+  });
+
+  const months = Object.keys(monthMap).sort().reverse(); // newest first
+  const colorMap = {
+    great: 'tc-great', okay: 'tc-okay', normal: 'tc-normal',
+    tired: 'tc-tired', stressed: 'tc-stressed', troubled: 'tc-troubled',
+  };
+
+  tbody.innerHTML = '';
+  months.forEach(mk => {
+    const c = monthMap[mk];
+    const sum = Object.values(c).reduce((a, b) => a + b, 0);
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${getMonthLabel(mk)}</td>
+      ${EMOTIONS.map(e => `<td class="${colorMap[e.id]}">${c[e.id] || 0}</td>`).join('')}
+      <td class="tc-total">${sum}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+/* ── Weekly Stacked Bar Chart ── */
+function renderWeeklyChart() {
+  const area = document.getElementById('chartArea');
+
+  // Group entries by week
+  const weekMap = {};
+  state.entries.forEach(e => {
+    const wk = getWeekKey(e.ts);
+    if (!weekMap[wk]) weekMap[wk] = {};
+    weekMap[wk][e.eid] = (weekMap[wk][e.eid] || 0) + 1;
+  });
+
+  const weeks = Object.keys(weekMap).sort(); // ascending (oldest → newest)
+
+  if (weeklyChart) { weeklyChart.destroy(); weeklyChart = null; }
+
+  if (!weeks.length) {
+    area.innerHTML = `<div class="chart-empty"><div class="cei">📊</div><div>기록이 쌓이면 주차별 흐름이 표시됩니다</div></div>`;
+    return;
+  }
+
+  // Build canvas
+  area.innerHTML = '<div class="chart-wrap"><canvas id="weeklyChartCanvas"></canvas></div>';
+  const ctx = document.getElementById('weeklyChartCanvas').getContext('2d');
+
+  const labels = weeks.map(getWeekLabel);
+
+  weeklyChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: EMOTIONS.map(e => ({
+        label: `${e.emoji} ${e.label}`,
+        data: weeks.map(wk => weekMap[wk][e.id] || 0),
+        backgroundColor: e.color + 'dd',
+        borderColor: e.color,
+        borderWidth: 0,
+        stack: 'emo',
+      })),
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 500 },
+      plugins: {
+        legend: {
+          position: 'bottom',
+          labels: {
+            color: '#8a9bba',
+            font: { size: 11, family: 'Noto Sans KR' },
+            boxWidth: 10, boxHeight: 10, padding: 14,
+          },
+        },
+        tooltip: {
+          mode: 'index',
+          intersect: false,
+          backgroundColor: '#0b1e36',
+          borderColor: 'rgba(255,255,255,0.08)',
+          borderWidth: 1,
+          titleColor: '#eef2f8',
+          bodyColor: '#8a9bba',
+          padding: 12,
+          callbacks: {
+            footer: items => {
+              const total = items.reduce((s, i) => s + i.parsed.y, 0);
+              return `합계: ${total}건`;
+            },
+          },
+        },
+      },
+      scales: {
+        x: {
+          stacked: true,
+          grid: { color: 'rgba(255,255,255,0.03)' },
+          ticks: { color: '#8a9bba', font: { size: 10 }, maxRotation: 35, minRotation: 0 },
+        },
+        y: {
+          stacked: true,
+          beginAtZero: true,
+          grid: { color: 'rgba(255,255,255,0.04)' },
+          ticks: {
+            color: '#8a9bba', font: { size: 11 }, stepSize: 1,
+            callback: v => Number.isInteger(v) ? v : '',
+          },
+        },
+      },
+    },
+  });
+}
+
+/* ── Weekly Messages (anonymous, with notes, current week) ── */
+function renderWeeklyMessages() {
+  const list = document.getElementById('msgList');
+  const wk = getWeekKey();
+  const weekStart = parseWeekKey(wk).getTime();
+  const weekEnd = weekStart + 7 * 86400000;
+
+  const msgs = state.entries.filter(e => e.ts >= weekStart && e.ts < weekEnd && e.note);
+
+  document.getElementById('msgBadge').textContent = `${msgs.length}개`;
+
+  if (!msgs.length) {
+    list.innerHTML = '<div class="empty"><div class="ei">💬</div>이번 주 한마디를 남겨보세요</div>';
+    return;
+  }
+
+  list.innerHTML = '';
+  msgs.slice(0, 20).forEach(entry => {
+    const emo = EMOTIONS.find(x => x.id === entry.eid);
+    if (!emo) return;
+    const dt = new Date(entry.ts);
+    const ts = `${dt.getMonth() + 1}/${dt.getDate()} ${dt.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}`;
+    const item = document.createElement('div');
+    item.className = 'msg-item';
+    item.style.borderLeftColor = emo.color;
+    item.innerHTML = `
+      <div class="msg-emoji">${emo.emoji}</div>
+      <div class="msg-body">
+        <div class="msg-text">${entry.note}</div>
+        <div class="msg-time">${ts}</div>
+      </div>
+    `;
+    list.appendChild(item);
+  });
+}
+
+/* ════════════════════════════════════════
+   SUBMIT EMOTION
+════════════════════════════════════════ */
+function submitEmotion() {
+  const note = document.getElementById('noteInput').value.trim();
+  if (!selectedEmo) { showToast('감정을 선택해주세요 🎭'); return; }
+
+  state.entries.unshift({ id: uid(), eid: selectedEmo, note, ts: Date.now() });
+  save();
+
+  const e = EMOTIONS.find(x => x.id === selectedEmo);
+  document.getElementById('noteInput').value = '';
+  selectedEmo = null;
+  renderAll();
+  showToast(`컨디션이 기록됐어요 ${e.emoji}`);
+}
+
+document.getElementById('noteInput').addEventListener('keydown', ev => {
+  if (ev.key === 'Enter') submitEmotion();
+});
+
+/* ════════════════════════════════════════
+   TEAM MODAL
+════════════════════════════════════════ */
+function openTeamModal() {
+  document.getElementById('teamSizeInput').value = state.teamSize;
+  document.getElementById('teamOverlay').classList.add('open');
+}
+function closeTeamModal() {
+  document.getElementById('teamOverlay').classList.remove('open');
+}
+function onTeamOverlayClick(e) {
+  if (e.target === document.getElementById('teamOverlay')) closeTeamModal();
+}
+function saveTeamSize() {
+  const v = parseInt(document.getElementById('teamSizeInput').value, 10);
+  if (!v || v < 1 || v > 200) { showToast('1~200명 사이로 입력해주세요'); return; }
+  state.teamSize = v;
+  save();
+  closeTeamModal();
+  renderTeamSizeInfo();
+  showToast(`팀 인원이 ${v}명으로 설정됐어요 👥`);
+}
+
+/* ════════════════════════════════════════
+   PASSWORD & RESET MODAL
+════════════════════════════════════════ */
+function openPwModal() {
+  document.getElementById('pwInput').value = '';
+  document.getElementById('pwError').textContent = '';
+  document.getElementById('pwOverlay').classList.add('open');
+  setTimeout(() => document.getElementById('pwInput').focus(), 150);
+}
+function closePwModal() {
+  document.getElementById('pwOverlay').classList.remove('open');
+}
+function confirmReset() {
+  const pw = document.getElementById('pwInput').value;
+  if (pw !== PW) {
+    document.getElementById('pwError').textContent = '❌ 비밀번호가 올바르지 않습니다';
+    document.getElementById('pwInput').value = '';
+    document.getElementById('pwInput').focus();
+    return;
+  }
+  state.entries = [];
+  state.weeklyArchived = [];
+  save();
+  closePwModal();
+  closeTeamModal();
+  renderAll();
+  showToast('🗑️ 모든 기록이 초기화됐어요');
+}
+document.getElementById('pwInput').addEventListener('keydown', ev => {
+  if (ev.key === 'Enter') confirmReset();
+  if (ev.key === 'Escape') closePwModal();
+});
+
+/* ════════════════════════════════════════
+   SUNDAY 23:55 AUTO-ARCHIVE
+════════════════════════════════════════ */
+function checkWeeklyArchive() {
+  if (!state.weeklyArchived) state.weeklyArchived = [];
+
+  const now = new Date();
+  const isSundayLate = now.getDay() === 0 && now.getHours() === 23 && now.getMinutes() >= 55;
+  if (isSundayLate) {
+    const wk = getWeekKey(now.getTime());
+    if (!state.weeklyArchived.includes(wk)) {
+      state.weeklyArchived.push(wk);
+      save();
+      showToast('✅ 이번 주 컨디션 데이터가 저장됐어요!');
+      document.getElementById('archiveBadge').style.display = '';
+      document.getElementById('archiveNotice').classList.add('visible');
+    }
+  }
+
+  // Auto-archive any past weeks (Mon-Sun cycle already passed)
+  const currentWk = getWeekKey();
+  const pastWeeks = [...new Set(state.entries.map(e => getWeekKey(e.ts)))].filter(wk => wk < currentWk);
+  let changed = false;
+  pastWeeks.forEach(wk => {
+    if (!state.weeklyArchived.includes(wk)) {
+      state.weeklyArchived.push(wk);
+      changed = true;
+    }
+  });
+  if (changed) save();
+
+  // Update archive badge visibility
+  const currentWkArchived = state.weeklyArchived.includes(getWeekKey());
+  document.getElementById('archiveBadge').style.display = currentWkArchived ? '' : 'none';
+}
+
+/* ════════════════════════════════════════
+   TOAST
+════════════════════════════════════════ */
+let toastTimer = null;
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 3200);
+}
+
+/* ── START ── */
+init();
+</script>
+</body>
+</html>
