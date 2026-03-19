@@ -664,21 +664,9 @@ function connectFirebase() {
 }
 
 function disconnectFirebase() {
-  if (!confirm('클라우드 연동을 해제할까요? 기록은 이 기기에 남습니다.')) return;
-  fbUrl = '';
-  fbConnected = false;
-  localStorage.removeItem(FB_URL_KEY);
-  if (fbPollTimer) { clearInterval(fbPollTimer); fbPollTimer = null; }
-  setSyncDot('off');
-  updateSyncModalUI();
-  showToast('연동이 해제됐어요. 로컬 저장 모드입니다');
-  closeSyncModal();
+  showToast('Firebase SDK 방식은 항상 자동 연결됩니다');
 }
 
-function startFbPolling() {
-  if (fbPollTimer) clearInterval(fbPollTimer);
-  fbPollTimer = setInterval(() => fbPull(false), 5000);
-}
 
 
 
@@ -1101,7 +1089,8 @@ document.getElementById('pwInput').addEventListener('keydown', ev => {
 ════════════════════════════════════════ */
 function openSyncModal() {
   updateSyncModalUI();
-  document.getElementById('syncUrlInput').value = fbUrl;
+  document.getElementById('syncUrlInput').value =
+    'https://team-dashboard-b989c-default-rtdb.asia-southeast1.firebasedatabase.app';
   document.getElementById('syncOverlay').classList.add('open');
 }
 function closeSyncModal() {
