@@ -8,8 +8,6 @@
   <meta http-equiv="Expires" content="0" />
   <title>팀 컨디션 대시보드</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700;900&family=Gowun+Batang:wght@400;700&display=swap" rel="stylesheet" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -555,15 +553,8 @@ const EMOTIONS = [
 const PW = 'xlookup_win';
 const STORAGE_KEY = 'tcd-v3';
 
-/* ── Firebase SDK 초기화 ── */
-firebase.initializeApp({
-  apiKey:      'AIzaSyC3E68YykBsoS7tU8SbVZ7CQ86VMNMRs8E',
-  authDomain:  'team-dashboard-b989c.firebaseapp.com',
-  databaseURL: 'https://team-dashboard-b989c-default-rtdb.asia-southeast1.firebasedatabase.app',
-  projectId:   'team-dashboard-b989c',
-});
-const fbDB  = firebase.database();
-const fbRef = fbDB.ref('tcd');
+/* ── Firebase REST API 설정 ── */
+const FB_URL = 'https://team-dashboard-b989c-default-rtdb.asia-southeast1.firebasedatabase.app/tcd.json';
 
 /* ════════════════════════════════════════
    STATE
@@ -577,39 +568,28 @@ let selectedEmo  = null;
 let weeklyChart  = null;
 
 /* ════════════════════════════════════════
-   FIREBASE SDK SYNC  (실시간 리스너)
+   FIREBASE REST API SYNC  (5초 폴링)
 ════════════════════════════════════════ */
 let fbConnected = false;
+let fbPollTimer = null;
+let fbLastMod   = 0;
 
 function initFirebaseFromStorage() {
   setSyncDot('syncing');
+  fbPull(true);                          // 즉시 1회 풀
+  fbPollTimer = setInterval(() => fbPull(false), 5000);
+}
 
-  // 10초 내 연결 안 되면 오류 표시
-  const connTimeout = setTimeout(() => {
+async function fbPull(isInit) {
+  try {
+    const res  = await fetch(FB_URL, { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
     if (!fbConnected) {
-      setSyncDot('error');
-      fbConnected = false;
-      updateSyncModalUI();
-      console.warn('Firebase 연결 타임아웃 — 로컬 저장 모드로 동작합니다');
-    }
-  }, 10000);
-
-  // 연결 상태 모니터링
-  fbDB.ref('.info/connected').on('value', (snap) => {
-    if (snap.val() === true) {
-      clearTimeout(connTimeout);
       fbConnected = true;
       setSyncDot('connected');
-    } else {
-      fbConnected = false;
-      if (connTimeout._destroyed) setSyncDot('syncing');
+      updateSyncModalUI();
     }
-    updateSyncModalUI();
-  });
-
-  // 실시간 리스너 — 데이터 변경 시 자동 반영
-  fbRef.on('value', (snapshot) => {
-    const data = snapshot.val();
     if (data) {
       const remote = data.lastModified || 0;
       const local  = state.lastModified || 0;
@@ -618,26 +598,45 @@ function initFirebaseFromStorage() {
         state.entries        = Array.isArray(data.entries)        ? data.entries        : [];
         state.weeklyArchived = Array.isArray(data.weeklyArchived) ? data.weeklyArchived : [];
         state.lastModified   = remote;
+        fbLastMod = remote;
         localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
         renderAll();
       }
     }
-  }, (err) => {
-    fbConnected = false;
-    setSyncDot('error');
-    updateSyncModalUI();
-    console.error('Firebase 연결 오류:', err.message);
-  });
+  } catch (e) {
+    if (fbConnected) {
+      fbConnected = false;
+      setSyncDot('error');
+      updateSyncModalUI();
+    }
+    console.error('Firebase 풀 오류:', e.message);
+  }
 }
 
-// 수동 연결 버튼 (모달) — SDK 방식에서는 항상 자동 연결됨
+async function fbPush(payload) {
+  try {
+    await fetch(FB_URL, {
+      method:  'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(payload),
+    });
+    if (!fbConnected) {
+      fbConnected = true;
+      setSyncDot('connected');
+      updateSyncModalUI();
+    }
+  } catch (e) {
+    console.error('Firebase 푸시 오류:', e.message);
+  }
+}
+
 function connectFirebase() {
-  showToast('✅ Firebase SDK로 자동 연결됩니다');
+  showToast('✅ 자동 연결 중입니다');
   closeSyncModal();
 }
 
 function disconnectFirebase() {
-  showToast('Firebase SDK 방식은 항상 자동 연결됩니다');
+  showToast('자동 동기화 방식입니다');
 }
 
 
@@ -683,7 +682,7 @@ function save() {
   };
   state.lastModified = payload.lastModified;
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  fbRef.set(payload); // Firebase SDK 저장 (실시간 반영)
+  fbPush(payload);
 }
 
 /* ════════════════════════════════════════
@@ -1074,21 +1073,14 @@ function updateSyncModalUI() {
   const box  = document.getElementById('syncStatusBox');
   const text = document.getElementById('syncStatusText');
   const dotM = document.getElementById('syncDotModal');
-  const dot  = document.getElementById('syncDot');
-  const dotState = dot ? dot.className.replace('sync-dot','').trim() : '';
   if (fbConnected) {
     box.className = 'sync-status-box ok';
     dotM.className = 'sync-dot connected';
     text.textContent = '연결됨 — 모든 기기에서 실시간 동기화 중';
-  } else if (dotState === 'error') {
-    box.className = 'sync-status-box off';
-    dotM.className = 'sync-dot error';
-    text.innerHTML = '연결 실패 — Firebase 규칙을 확인해 주세요<br>'
-      + '<small style="color:var(--dim)">Firebase Console → Realtime Database → 규칙 탭 → read/write를 <b>true</b>로 설정</small>';
   } else {
     box.className = 'sync-status-box off';
     dotM.className = 'sync-dot';
-    text.textContent = '연결 중… 잠시 기다려 주세요';
+    text.textContent = '연결 중… (최대 10초 소요)';
   }
 }
 
