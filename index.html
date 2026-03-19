@@ -3,6 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
   <title>팀 컨디션 대시보드</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700;900&family=Gowun+Batang:wght@400;700&display=swap" rel="stylesheet" />
@@ -596,21 +599,51 @@ let weeklyChart  = null;
 /* ════════════════════════════════════════
    FIREBASE REST SYNC
 ════════════════════════════════════════ */
-let fbUrl         = '';
-let fbConnected   = false;
-let fbPollTimer   = null;
-let fbRetryTimer  = null;
-let fbLastMod     = 0;
-let fbRetryCount  = 0;
+let fbUrl       = FB_DEFAULT;
+let fbConnected = false;
+let fbPollTimer = null;
+let fbLastMod   = 0;
 
+// 앱 시작 시 자동 연결 + 5초마다 폴링 (연결 안 돼도 계속 재시도)
 function initFirebaseFromStorage() {
   fbUrl = localStorage.getItem(FB_URL_KEY) || FB_DEFAULT;
-  autoConnect();
+  localStorage.setItem(FB_URL_KEY, fbUrl); // 항상 저장
+  startFbPolling();
 }
 
-function autoConnect() {
-  if (!fbUrl) return;
-  connectFirebase(fbUrl, true);
+function startFbPolling() {
+  if (fbPollTimer) clearInterval(fbPollTimer);
+  fbPull(); // 즉시 1회
+  fbPollTimer = setInterval(fbPull, 5000); // 5초마다 자동
+}
+
+async function fbPull() {
+  try {
+    const res = await fetch(`${fbUrl}/tcd.json`, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+
+    if (!fbConnected) {
+      fbConnected = true;
+      setSyncDot('connected');
+      updateSyncModalUI();
+    }
+
+    if (data && data.lastModified > fbLastMod) {
+      fbLastMod           = data.lastModified;
+      state.teamSize      = data.teamSize      ?? state.teamSize;
+      state.entries       = Array.isArray(data.entries)        ? data.entries        : [];
+      state.weeklyArchived= Array.isArray(data.weeklyArchived) ? data.weeklyArchived : [];
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      renderAll();
+    }
+  } catch(e) {
+    if (fbConnected) {
+      fbConnected = false;
+      setSyncDot('error');
+      updateSyncModalUI();
+    }
+  }
 }
 
 async function connectFirebase(url, silent) {
@@ -619,51 +652,18 @@ async function connectFirebase(url, silent) {
   if (!raw) { showToast('URL을 입력해주세요'); return; }
 
   fbUrl = raw;
+  localStorage.setItem(FB_URL_KEY, fbUrl);
+  fbConnected = false;
   setSyncDot('syncing');
 
-  try {
-    // 읽기로 연결 테스트 (쓰기보다 더 관대한 규칙에서도 동작)
-    const res = await fetch(`${raw}/tcd.json`, { cache: 'no-store' });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  await fbPull();
 
-    fbConnected  = true;
-    fbRetryCount = 0;
-    localStorage.setItem(FB_URL_KEY, fbUrl);
-    setSyncDot('connected');
-    updateSyncModalUI();
-
-    if (!silent) {
-      showToast('✅ 클라우드 연동 완료! 모든 기기에서 동기화됩니다');
-      closeSyncModal();
-    }
-
-    // 데이터 즉시 로드 후 폴링 시작
-    const data = await res.json();
-    if (data) applyRemoteData(data);
-    startFbPolling();
-
-  } catch(e) {
-    fbConnected = false;
-    setSyncDot('error');
-    if (!silent) showToast('❌ 연결 실패. URL을 확인해주세요');
-
-    // 자동 재시도: 5s → 10s → 20s → 30s (최대)
-    if (fbRetryTimer) clearTimeout(fbRetryTimer);
-    const delay = Math.min(5000 * Math.pow(2, fbRetryCount), 30000);
-    fbRetryCount++;
-    fbRetryTimer = setTimeout(() => autoConnect(), delay);
+  if (fbConnected) {
+    if (!silent) { showToast('✅ 클라우드 연동 완료!'); closeSyncModal(); }
+  } else {
+    if (!silent) showToast('❌ 연결 실패. Firebase 규칙을 확인해주세요');
   }
-}
-
-function applyRemoteData(data) {
-  const remoteMod = data.lastModified || 0;
-  if (remoteMod <= fbLastMod) return;
-  fbLastMod           = remoteMod;
-  state.teamSize      = data.teamSize      ?? state.teamSize;
-  state.entries       = Array.isArray(data.entries)        ? data.entries        : [];
-  state.weeklyArchived= Array.isArray(data.weeklyArchived) ? data.weeklyArchived : [];
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  renderAll();
+  updateSyncModalUI();
 }
 
 function disconnectFirebase() {
@@ -683,42 +683,10 @@ function startFbPolling() {
   fbPollTimer = setInterval(() => fbPull(false), 5000);
 }
 
-async function fbPull(force) {
-  if (!fbUrl) return;
-  try {
-    const res = await fetch(`${fbUrl}/tcd.json`, { cache: 'no-store' });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    if (!data) return;
-
-    if (!fbConnected) {
-      fbConnected = true;
-      fbRetryCount = 0;
-      setSyncDot('connected');
-      updateSyncModalUI();
-    }
-
-    if (force) {
-      applyRemoteData({ ...data, lastModified: (data.lastModified || 0) + 1 }); // force apply
-    } else {
-      applyRemoteData(data);
-    }
-  } catch(e) {
-    setSyncDot('error');
-    // 폴링 중 실패 시 재연결 시도
-    if (fbConnected) {
-      fbConnected = false;
-      updateSyncModalUI();
-      if (fbRetryTimer) clearTimeout(fbRetryTimer);
-      fbRetryTimer = setTimeout(() => autoConnect(), 8000);
-    }
-  }
-}
 
 async function fbPush() {
-  if (!fbConnected || !fbUrl) return;
+  if (!fbUrl) return;
   try {
-    setSyncDot('syncing');
     const payload = {
       teamSize:       state.teamSize,
       entries:        state.entries,
@@ -726,12 +694,16 @@ async function fbPush() {
       lastModified:   Date.now(),
     };
     fbLastMod = payload.lastModified;
-    await fetch(`${fbUrl}/tcd.json`, {
+    const res = await fetch(`${fbUrl}/tcd.json`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
-    setSyncDot('connected');
+    if (res.ok && !fbConnected) {
+      fbConnected = true;
+      setSyncDot('connected');
+      updateSyncModalUI();
+    }
   } catch(e) {
     setSyncDot('error');
   }
@@ -1227,12 +1199,9 @@ function showToast(msg) {
   toastTimer = setTimeout(() => t.classList.remove('show'), 3200);
 }
 
-// 탭/창 다시 활성화될 때 자동 재연결 + 즉시 폴
+// 탭/창 다시 활성화될 때 즉시 동기화
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') {
-    if (!fbConnected) autoConnect();
-    else fbPull(false);
-  }
+  if (document.visibilityState === 'visible') fbPull();
 });
 
 /* ── START ── */
