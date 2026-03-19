@@ -596,14 +596,21 @@ let weeklyChart  = null;
 /* ════════════════════════════════════════
    FIREBASE REST SYNC
 ════════════════════════════════════════ */
-let fbUrl        = '';   // Firebase Realtime Database URL (no trailing slash)
-let fbConnected  = false;
-let fbPollTimer  = null;
-let fbLastMod    = 0;    // last known remote lastModified
+let fbUrl         = '';
+let fbConnected   = false;
+let fbPollTimer   = null;
+let fbRetryTimer  = null;
+let fbLastMod     = 0;
+let fbRetryCount  = 0;
 
 function initFirebaseFromStorage() {
-  const url = localStorage.getItem(FB_URL_KEY) || FB_DEFAULT;
-  if (url) connectFirebase(url, true); // silent = true (no toast)
+  fbUrl = localStorage.getItem(FB_URL_KEY) || FB_DEFAULT;
+  autoConnect();
+}
+
+function autoConnect() {
+  if (!fbUrl) return;
+  connectFirebase(fbUrl, true);
 }
 
 async function connectFirebase(url, silent) {
@@ -611,31 +618,52 @@ async function connectFirebase(url, silent) {
   const raw = (url || inputEl?.value || '').trim().replace(/\/$/, '');
   if (!raw) { showToast('URL을 입력해주세요'); return; }
 
+  fbUrl = raw;
   setSyncDot('syncing');
+
   try {
-    // 연결 테스트
-    const res = await fetch(`${raw}/tcd-ping.json`, { method: 'PUT', body: '"ok"' });
-    if (!res.ok) throw new Error('write failed');
+    // 읽기로 연결 테스트 (쓰기보다 더 관대한 규칙에서도 동작)
+    const res = await fetch(`${raw}/tcd.json`, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-    fbUrl = raw;
-    fbConnected = true;
+    fbConnected  = true;
+    fbRetryCount = 0;
     localStorage.setItem(FB_URL_KEY, fbUrl);
-
     setSyncDot('connected');
     updateSyncModalUI();
+
     if (!silent) {
       showToast('✅ 클라우드 연동 완료! 모든 기기에서 동기화됩니다');
       closeSyncModal();
     }
 
-    // 첫 로드 + 폴링 시작
-    await fbPull(true);
+    // 데이터 즉시 로드 후 폴링 시작
+    const data = await res.json();
+    if (data) applyRemoteData(data);
     startFbPolling();
+
   } catch(e) {
+    fbConnected = false;
     setSyncDot('error');
     if (!silent) showToast('❌ 연결 실패. URL을 확인해주세요');
-    fbConnected = false;
+
+    // 자동 재시도: 5s → 10s → 20s → 30s (최대)
+    if (fbRetryTimer) clearTimeout(fbRetryTimer);
+    const delay = Math.min(5000 * Math.pow(2, fbRetryCount), 30000);
+    fbRetryCount++;
+    fbRetryTimer = setTimeout(() => autoConnect(), delay);
   }
+}
+
+function applyRemoteData(data) {
+  const remoteMod = data.lastModified || 0;
+  if (remoteMod <= fbLastMod) return;
+  fbLastMod           = remoteMod;
+  state.teamSize      = data.teamSize      ?? state.teamSize;
+  state.entries       = Array.isArray(data.entries)        ? data.entries        : [];
+  state.weeklyArchived= Array.isArray(data.weeklyArchived) ? data.weeklyArchived : [];
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  renderAll();
 }
 
 function disconnectFirebase() {
@@ -656,27 +684,34 @@ function startFbPolling() {
 }
 
 async function fbPull(force) {
-  if (!fbConnected || !fbUrl) return;
+  if (!fbUrl) return;
   try {
-    const res = await fetch(`${fbUrl}/tcd.json`);
-    if (!res.ok) return;
+    const res = await fetch(`${fbUrl}/tcd.json`, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     if (!data) return;
 
-    const remoteMod = data.lastModified || 0;
-    if (!force && remoteMod <= fbLastMod) return; // no changes
+    if (!fbConnected) {
+      fbConnected = true;
+      fbRetryCount = 0;
+      setSyncDot('connected');
+      updateSyncModalUI();
+    }
 
-    fbLastMod = remoteMod;
-    state.teamSize      = data.teamSize      ?? state.teamSize;
-    state.entries       = Array.isArray(data.entries) ? data.entries : [];
-    state.weeklyArchived= Array.isArray(data.weeklyArchived) ? data.weeklyArchived : [];
-
-    // also mirror to localStorage
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    renderAll();
-    setSyncDot('connected');
+    if (force) {
+      applyRemoteData({ ...data, lastModified: (data.lastModified || 0) + 1 }); // force apply
+    } else {
+      applyRemoteData(data);
+    }
   } catch(e) {
     setSyncDot('error');
+    // 폴링 중 실패 시 재연결 시도
+    if (fbConnected) {
+      fbConnected = false;
+      updateSyncModalUI();
+      if (fbRetryTimer) clearTimeout(fbRetryTimer);
+      fbRetryTimer = setTimeout(() => autoConnect(), 8000);
+    }
   }
 }
 
@@ -1191,6 +1226,14 @@ function showToast(msg) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.classList.remove('show'), 3200);
 }
+
+// 탭/창 다시 활성화될 때 자동 재연결 + 즉시 폴
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    if (!fbConnected) autoConnect();
+    else fbPull(false);
+  }
+});
 
 /* ── START ── */
 init();
