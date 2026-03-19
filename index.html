@@ -8,6 +8,8 @@
   <meta http-equiv="Expires" content="0" />
   <title>팀 컨디션 대시보드</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700;900&family=Gowun+Batang:wght@400;700&display=swap" rel="stylesheet" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -582,8 +584,16 @@ const EMOTIONS = [
 ];
 const PW = 'xlookup_win';
 const STORAGE_KEY = 'tcd-v3';
-const FB_URL_KEY  = 'tcd-firebase-url';
-const FB_DEFAULT  = 'https://team-dashboard-b989c-default-rtdb.asia-southeast1.firebasedatabase.app';
+
+/* ── Firebase SDK 초기화 ── */
+firebase.initializeApp({
+  apiKey:      'AIzaSyC3E68YykBsoS7tU8SbVZ7CQ86VMNMRs8E',
+  authDomain:  'team-dashboard-b989c.firebaseapp.com',
+  databaseURL: 'https://team-dashboard-b989c-default-rtdb.asia-southeast1.firebasedatabase.app',
+  projectId:   'team-dashboard-b989c',
+});
+const fbDB  = firebase.database();
+const fbRef = fbDB.ref('tcd');
 
 /* ════════════════════════════════════════
    STATE
@@ -597,32 +607,16 @@ let selectedEmo  = null;
 let weeklyChart  = null;
 
 /* ════════════════════════════════════════
-   FIREBASE REST SYNC
+   FIREBASE SDK SYNC  (실시간 리스너)
 ════════════════════════════════════════ */
-let fbUrl       = FB_DEFAULT;
 let fbConnected = false;
-let fbPollTimer = null;
-let fbLastMod   = 0;
 
-// 앱 시작 시 자동 연결 + 5초마다 폴링
-// FB_DEFAULT가 있으면 항상 그것을 사용 (localStorage 무시 — 잘못된 값 방지)
 function initFirebaseFromStorage() {
-  fbUrl = FB_DEFAULT;
-  localStorage.removeItem(FB_URL_KEY); // 잘못 저장된 이전 URL 제거
-  startFbPolling();
-}
+  setSyncDot('syncing');
 
-function startFbPolling() {
-  if (fbPollTimer) clearInterval(fbPollTimer);
-  fbPull(); // 즉시 1회
-  fbPollTimer = setInterval(fbPull, 5000); // 5초마다 자동
-}
-
-async function fbPull() {
-  try {
-    const res = await fetch(`${fbUrl}/tcd.json`, { cache: 'no-store' });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
+  // 실시간 리스너 — 데이터 변경 시 자동 반영
+  fbRef.on('value', (snapshot) => {
+    const data = snapshot.val();
 
     if (!fbConnected) {
       fbConnected = true;
@@ -630,41 +624,43 @@ async function fbPull() {
       updateSyncModalUI();
     }
 
-    if (data && data.lastModified > fbLastMod) {
-      fbLastMod           = data.lastModified;
-      state.teamSize      = data.teamSize      ?? state.teamSize;
-      state.entries       = Array.isArray(data.entries)        ? data.entries        : [];
-      state.weeklyArchived= Array.isArray(data.weeklyArchived) ? data.weeklyArchived : [];
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-      renderAll();
+    if (data) {
+      const remote = data.lastModified || 0;
+      const local  = state.lastModified || 0;
+      if (remote > local) {
+        state.teamSize       = data.teamSize      ?? state.teamSize;
+        state.entries        = Array.isArray(data.entries)        ? data.entries        : [];
+        state.weeklyArchived = Array.isArray(data.weeklyArchived) ? data.weeklyArchived : [];
+        state.lastModified   = remote;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        renderAll();
+      }
     }
-  } catch(e) {
-    if (fbConnected) {
+  }, (err) => {
+    // 연결 오류 시
+    fbConnected = false;
+    setSyncDot('error');
+    updateSyncModalUI();
+    console.error('Firebase 연결 오류:', err.message);
+  });
+
+  // 연결 상태 모니터링
+  fbDB.ref('.info/connected').on('value', (snap) => {
+    if (snap.val() === true) {
+      fbConnected = true;
+      setSyncDot('connected');
+    } else {
       fbConnected = false;
-      setSyncDot('error');
-      updateSyncModalUI();
+      setSyncDot('syncing'); // 재연결 중
     }
-  }
+    updateSyncModalUI();
+  });
 }
 
-async function connectFirebase(url, silent) {
-  const inputEl = document.getElementById('syncUrlInput');
-  const raw = (url || inputEl?.value || '').trim().replace(/\/$/, '');
-  if (!raw) { showToast('URL을 입력해주세요'); return; }
-
-  fbUrl = raw;
-  localStorage.setItem(FB_URL_KEY, fbUrl);
-  fbConnected = false;
-  setSyncDot('syncing');
-
-  await fbPull();
-
-  if (fbConnected) {
-    if (!silent) { showToast('✅ 클라우드 연동 완료!'); closeSyncModal(); }
-  } else {
-    if (!silent) showToast('❌ 연결 실패. Firebase 규칙을 확인해주세요');
-  }
-  updateSyncModalUI();
+// 수동 연결 버튼 (모달) — SDK 방식에서는 항상 자동 연결됨
+function connectFirebase() {
+  showToast('✅ Firebase SDK로 자동 연결됩니다');
+  closeSyncModal();
 }
 
 function disconnectFirebase() {
@@ -685,30 +681,6 @@ function startFbPolling() {
 }
 
 
-async function fbPush() {
-  if (!fbUrl) return;
-  try {
-    const payload = {
-      teamSize:       state.teamSize,
-      entries:        state.entries,
-      weeklyArchived: state.weeklyArchived || [],
-      lastModified:   Date.now(),
-    };
-    fbLastMod = payload.lastModified;
-    const res = await fetch(`${fbUrl}/tcd.json`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    if (res.ok && !fbConnected) {
-      fbConnected = true;
-      setSyncDot('connected');
-      updateSyncModalUI();
-    }
-  } catch(e) {
-    setSyncDot('error');
-  }
-}
 
 /* ── Sync dot helper ── */
 function setSyncDot(status) {
@@ -742,8 +714,15 @@ function load() {
 }
 
 function save() {
+  const payload = {
+    teamSize:       state.teamSize,
+    entries:        state.entries,
+    weeklyArchived: state.weeklyArchived || [],
+    lastModified:   Date.now(),
+  };
+  state.lastModified = payload.lastModified;
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  fbPush(); // 비동기 Firebase 동기화
+  fbRef.set(payload); // Firebase SDK 저장 (실시간 반영)
 }
 
 /* ════════════════════════════════════════
@@ -1200,10 +1179,6 @@ function showToast(msg) {
   toastTimer = setTimeout(() => t.classList.remove('show'), 3200);
 }
 
-// 탭/창 다시 활성화될 때 즉시 동기화
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') fbPull();
-});
 
 /* ── START ── */
 init();
