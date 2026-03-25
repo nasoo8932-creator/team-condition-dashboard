@@ -222,6 +222,29 @@
     .msg-text { font-size: 13px; line-height: 1.55; word-break: break-word; }
     .msg-time { font-size: 10px; color: var(--dim); margin-top: 3px; }
 
+    /* ── WEEK MSG TABS ── */
+    .msg-week-tabs {
+      display: flex; flex-wrap: wrap; gap: 6px;
+      margin-bottom: 12px;
+    }
+    .msg-week-tab {
+      padding: 4px 11px; font-size: 11px; border-radius: 20px; cursor: pointer;
+      background: rgba(255,255,255,0.06); color: var(--muted);
+      border: 1px solid rgba(255,255,255,0.1);
+      transition: all .15s;
+    }
+    .msg-week-tab:hover { background: rgba(255,255,255,0.1); color: var(--text); }
+    .msg-week-tab.active {
+      background: rgba(99,102,241,0.25); color: #a5b4fc;
+      border-color: rgba(99,102,241,0.5);
+    }
+    /* ── WEEK MSG POPUP MODAL ── */
+    .week-msg-modal { max-width: 480px; }
+    .chart-click-hint {
+      text-align: center; font-size: 11px; color: var(--dim);
+      margin-top: 6px; padding: 4px 0;
+    }
+
     /* ── EMPTY ── */
     .empty { text-align: center; padding: 28px 16px; color: var(--dim); font-size: 12px; }
     .empty .ei { font-size: 30px; margin-bottom: 8px; }
@@ -432,6 +455,7 @@
             <div>기록이 쌓이면 주차별 흐름이 표시됩니다</div>
           </div>
         </div>
+        <div class="chart-click-hint" id="chartClickHint" style="display:none">💬 막대를 클릭하면 그 주의 한마디를 볼 수 있어요</div>
 
         <div class="archive-notice" id="archiveNotice">
           ✅ 이번 주(일요일 23:55) 데이터가 안전하게 저장됐어요.
@@ -458,18 +482,31 @@
         <div style="margin-top:10px;font-size:11px;color:var(--dim);text-align:center" id="teamSizeInfo"></div>
       </div>
 
-      <!-- 이번 한주 한마디 -->
+      <!-- 이번 한주 한마디 (누적 주차 탭) -->
       <div class="card">
         <div class="card-head">
           <span class="card-title">이번 한주 한마디</span>
           <span class="badge" id="msgBadge">0개</span>
         </div>
+        <!-- 주차 탭 -->
+        <div class="msg-week-tabs" id="msgWeekTabs"></div>
         <div class="msg-list" id="msgList">
           <div class="empty"><div class="ei">💬</div>이번 주 한마디를 남겨보세요</div>
         </div>
       </div>
 
     </div>
+  </div>
+</div>
+
+<!-- ════ WEEK MSG POPUP ════ -->
+<div class="overlay" id="weekMsgOverlay" onclick="closeWeekMsgPopup(event)">
+  <div class="modal week-msg-modal">
+    <div class="modal-head">
+      <h2 id="weekMsgTitle">💬 한마디</h2>
+      <button class="modal-close" onclick="document.getElementById('weekMsgOverlay').classList.remove('open')">✕</button>
+    </div>
+    <div class="msg-list" id="weekMsgList" style="max-height:420px;overflow-y:auto;"></div>
   </div>
 </div>
 
@@ -921,8 +958,11 @@ function renderWeeklyChart() {
 
   if (!weeks.length) {
     area.innerHTML = `<div class="chart-empty"><div class="cei">📊</div><div>기록이 쌓이면 주차별 흐름이 표시됩니다</div></div>`;
+    document.getElementById('chartClickHint').style.display = 'none';
     return;
   }
+
+  document.getElementById('chartClickHint').style.display = 'block';
 
   // Build canvas
   area.innerHTML = '<div class="chart-wrap"><canvas id="weeklyChartCanvas"></canvas></div>';
@@ -947,6 +987,11 @@ function renderWeeklyChart() {
       responsive: true,
       maintainAspectRatio: false,
       animation: { duration: 500 },
+      onClick: (evt, elements) => {
+        if (!elements.length) return;
+        const idx = elements[0].index;
+        openWeekMsgPopup(weeks[idx]);
+      },
       plugins: {
         legend: {
           position: 'bottom',
@@ -993,24 +1038,54 @@ function renderWeeklyChart() {
   });
 }
 
-/* ── Weekly Messages (anonymous, with notes, current week) ── */
+/* ── Weekly Messages (누적 주차 탭) ── */
+let selectedMsgWeek = null; // null = 이번 주
+
 function renderWeeklyMessages() {
-  const list = document.getElementById('msgList');
-  const wk = getWeekKey();
-  const weekStart = parseWeekKey(wk).getTime();
-  const weekEnd = weekStart + 7 * 86400000;
+  // 한마디가 있는 모든 주차 수집 (최신순)
+  const weekSet = new Set(state.entries.filter(e => e.note).map(e => getWeekKey(e.ts)));
+  const currentWk = getWeekKey();
+  weekSet.add(currentWk);
+  const weeks = Array.from(weekSet).sort().reverse(); // 최신 주차 먼저
 
-  const msgs = state.entries.filter(e => e.ts >= weekStart && e.ts < weekEnd && e.note);
-
-  document.getElementById('msgBadge').textContent = `${msgs.length}개`;
-
-  if (!msgs.length) {
-    list.innerHTML = '<div class="empty"><div class="ei">💬</div>이번 주 한마디를 남겨보세요</div>';
-    return;
+  // selectedMsgWeek 초기화
+  if (!selectedMsgWeek || !weeks.includes(selectedMsgWeek)) {
+    selectedMsgWeek = currentWk;
   }
 
-  list.innerHTML = '';
-  msgs.slice(0, 20).forEach(entry => {
+  // 탭 렌더
+  const tabsEl = document.getElementById('msgWeekTabs');
+  if (weeks.length <= 1) {
+    tabsEl.innerHTML = '';
+  } else {
+    tabsEl.innerHTML = weeks.map(wk => {
+      const label = wk === currentWk ? '이번 주' : getWeekLabel(wk);
+      return `<button class="msg-week-tab${wk === selectedMsgWeek ? ' active' : ''}"
+        onclick="selectMsgWeek('${wk}')">${label}</button>`;
+    }).join('');
+  }
+
+  // 해당 주차 메시지 필터
+  const wkStart = parseWeekKey(selectedMsgWeek).getTime();
+  const wkEnd   = wkStart + 7 * 86400000;
+  const msgs = state.entries.filter(e => e.ts >= wkStart && e.ts < wkEnd && e.note);
+
+  document.getElementById('msgBadge').textContent = `${msgs.length}개`;
+  renderMsgItems(document.getElementById('msgList'), msgs, selectedMsgWeek === currentWk);
+}
+
+function selectMsgWeek(wk) {
+  selectedMsgWeek = wk;
+  renderWeeklyMessages();
+}
+
+function renderMsgItems(listEl, msgs, isCurrentWeek) {
+  if (!msgs.length) {
+    listEl.innerHTML = `<div class="empty"><div class="ei">💬</div>${isCurrentWeek ? '이번 주 한마디를 남겨보세요' : '이 주차에 남긴 한마디가 없습니다'}</div>`;
+    return;
+  }
+  listEl.innerHTML = '';
+  msgs.slice(0, 30).forEach(entry => {
     const emo = EMOTIONS.find(x => x.id === entry.eid);
     if (!emo) return;
     const dt = new Date(entry.ts);
@@ -1025,8 +1100,27 @@ function renderWeeklyMessages() {
         <div class="msg-time">${ts}</div>
       </div>
     `;
-    list.appendChild(item);
+    listEl.appendChild(item);
   });
+}
+
+/* ── 차트 클릭 → 주차 한마디 팝업 ── */
+function openWeekMsgPopup(wk) {
+  const wkStart = parseWeekKey(wk).getTime();
+  const wkEnd   = wkStart + 7 * 86400000;
+  const msgs = state.entries.filter(e => e.ts >= wkStart && e.ts < wkEnd && e.note);
+  const currentWk = getWeekKey();
+
+  document.getElementById('weekMsgTitle').textContent =
+    `💬 ${wk === currentWk ? '이번 주' : getWeekLabel(wk)} 한마디`;
+  renderMsgItems(document.getElementById('weekMsgList'), msgs, wk === currentWk);
+  document.getElementById('weekMsgOverlay').classList.add('open');
+}
+
+function closeWeekMsgPopup(e) {
+  if (e.target === document.getElementById('weekMsgOverlay')) {
+    document.getElementById('weekMsgOverlay').classList.remove('open');
+  }
 }
 
 /* ════════════════════════════════════════
