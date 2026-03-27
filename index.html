@@ -641,6 +641,7 @@ let state = {
   teamSize: 5,
   entries: [],        // { id, eid, note, ts }
   weeklyArchived: [],
+  syncGeneration: 0,  // 초기화 시 증가 → 다른 기기에서도 동일 세대까지 일괄 반영
 };
 let selectedEmo  = null;
 let weeklyChart  = null;
@@ -693,6 +694,45 @@ async function detectFbUrl() {
   return '';
 }
 
+function mergeRemoteIntoState(data) {
+  const rGen = data.syncGeneration ?? 0;
+  const lGen = state.syncGeneration ?? 0;
+  const remote = data.lastModified || 0;
+  const local  = state.lastModified || 0;
+  const remoteEntries = Array.isArray(data.entries) ? data.entries : [];
+
+  /* 다른 기기에서 "모든 기록 초기화"로 세대가 올라간 경우에만 원격으로 통째로 반영 */
+  if (rGen > lGen) {
+    state.entries        = remoteEntries;
+    state.weeklyArchived = Array.isArray(data.weeklyArchived) ? data.weeklyArchived : [];
+    state.teamSize       = data.teamSize ?? state.teamSize;
+    state.syncGeneration = rGen;
+    state.lastModified   = Math.max(remote, local);
+    return;
+  }
+
+  /* 같은 세대(또는 로컬이 더 최신 세대): 기록은 id 기준 합치기 — 빈 클라우드가 최신이어도 로컬 기록 유지 */
+  const byId = new Map();
+  for (const e of state.entries) {
+    if (e && e.id) byId.set(e.id, e);
+  }
+  for (const e of remoteEntries) {
+    if (!e || !e.id) continue;
+    const cur = byId.get(e.id);
+    if (!cur || (e.ts || 0) >= (cur.ts || 0)) byId.set(e.id, e);
+  }
+  state.entries = Array.from(byId.values()).sort((a, b) => (b.ts || 0) - (a.ts || 0));
+  state.weeklyArchived = [...new Set([
+    ...(state.weeklyArchived || []),
+    ...(Array.isArray(data.weeklyArchived) ? data.weeklyArchived : []),
+  ])];
+  if (remote > local) {
+    state.teamSize = data.teamSize ?? state.teamSize;
+  }
+  state.syncGeneration = Math.max(rGen, lGen);
+  state.lastModified = Math.max(remote, local, state.lastModified || 0);
+}
+
 async function fbPull() {
   if (!FB_URL) return;
   try {
@@ -705,15 +745,21 @@ async function fbPull() {
       updateSyncModalUI();
     }
     if (data) {
-      const remote = data.lastModified || 0;
-      const local  = state.lastModified || 0;
-      if (remote > local) {
-        state.teamSize       = data.teamSize      ?? state.teamSize;
-        state.entries        = Array.isArray(data.entries)        ? data.entries        : [];
-        state.weeklyArchived = Array.isArray(data.weeklyArchived) ? data.weeklyArchived : [];
-        state.lastModified   = remote;
+      const remoteCount = Array.isArray(data.entries) ? data.entries.length : 0;
+      mergeRemoteIntoState(data);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      renderAll();
+      /* 로컬에만 있던 기록이 있으면 클라우드로 다시 올려 복구 */
+      if (state.entries.length > remoteCount && FB_URL) {
+        state.lastModified = Date.now();
+        await fbPush({
+          teamSize:       state.teamSize,
+          entries:        state.entries,
+          weeklyArchived: state.weeklyArchived || [],
+          syncGeneration: state.syncGeneration ?? 0,
+          lastModified:   state.lastModified,
+        });
         localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-        renderAll();
       }
     }
   } catch (e) {
@@ -808,10 +854,11 @@ function load() {
 
 function save() {
   const payload = {
-    teamSize:       state.teamSize,
-    entries:        state.entries,
-    weeklyArchived: state.weeklyArchived || [],
-    lastModified:   Date.now(),
+    teamSize:        state.teamSize,
+    entries:         state.entries,
+    weeklyArchived:  state.weeklyArchived || [],
+    syncGeneration:  state.syncGeneration ?? 0,
+    lastModified:    Date.now(),
   };
   state.lastModified = payload.lastModified;
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -1247,6 +1294,7 @@ function confirmPw() {
     renderTeamSizeInfo();
     showToast(`팀 인원이 ${v}명으로 설정됐어요 👥`);
   } else {
+    state.syncGeneration = (state.syncGeneration || 0) + 1;
     state.entries = [];
     state.weeklyArchived = [];
     save();
