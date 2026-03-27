@@ -14,25 +14,24 @@
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      /* 눈에 편한 딥 슬레이트 (순검정 대비) */
-      --bg:      #2a3542;
-      --bg2:     #343f4f;
-      --card:    rgba(255,255,255,0.07);
-      --card-h:  rgba(255,255,255,0.095);
-      --border:  rgba(255,255,255,0.11);
-      --text:    #f1f5f9;
-      --muted:   #94a3b8;
-      --dim:     #64748b;
+      --bg:      #000000;
+      --bg2:     #0a0a0a;
+      --card:    rgba(255,255,255,0.06);
+      --card-h:  rgba(255,255,255,0.085);
+      --border:  rgba(255,255,255,0.1);
+      --text:    #eef2f8;
+      --muted:   #8a9bba;
+      --dim:     #5c6b80;
       --primary: #6366f1;
       --pglow:   rgba(99,102,241,0.28);
       --r:       16px;
       --rs:      10px;
-      --sh:      0 8px 28px rgba(0,0,0,0.22);
+      --sh:      0 8px 32px rgba(0,0,0,0.55);
     }
 
     body {
       font-family: 'Noto Sans KR', -apple-system, sans-serif;
-      background: linear-gradient(165deg, var(--bg) 0%, #24303d 45%, var(--bg2) 100%);
+      background: var(--bg);
       color: var(--text);
       min-height: 100vh;
     }
@@ -145,12 +144,12 @@
     .month-table tbody td:first-child { text-align: left; color: var(--muted); font-weight: 500; font-size: 11px; }
     .month-table tbody tr:last-child td { border-bottom: none; }
     .month-table .tc-total { font-weight: 800; color: var(--text); }
-    .tc-great    { color: #42a5f5; font-weight: 600; }
-    .tc-okay     { color: #1565c0; font-weight: 600; }
-    .tc-normal   { color: #ffb300; font-weight: 600; }
-    .tc-tired    { color: #78909c; font-weight: 600; }
-    .tc-stressed { color: #37474f; font-weight: 600; }
-    .tc-troubled { color: #e53935; font-weight: 600; }
+    .tc-great    { color: #2e7d32; font-weight: 600; }
+    .tc-okay     { color: #66bb6a; font-weight: 600; }
+    .tc-normal   { color: #b0bec5; font-weight: 600; }
+    .tc-tired    { color: #ffca28; font-weight: 600; }
+    .tc-stressed { color: #ff7043; font-weight: 600; }
+    .tc-troubled { color: #d32f2f; font-weight: 600; }
     .month-empty { text-align: center; padding: 28px; color: var(--dim); font-size: 12px; }
 
     /* ── WEEKLY CHART ── */
@@ -599,14 +598,13 @@
 /* ════════════════════════════════════════
    CONSTANTS
 ════════════════════════════════════════ */
-/* Material Design 팔레트 기반 — 대비·구분 명확 */
 const EMOTIONS = [
-  { id: 'great',    emoji: '😊', label: '좋음',      score:  2, color: '#42a5f5' },
-  { id: 'okay',     emoji: '🙂', label: '무난',      score:  1, color: '#1565c0' },
-  { id: 'normal',   emoji: '😐', label: '보통',      score:  0, color: '#ffb300' },
-  { id: 'tired',    emoji: '😕', label: '피곤/지침', score: -1, color: '#78909c' },
-  { id: 'stressed', emoji: '😟', label: '스트레스',  score: -2, color: '#37474f' },
-  { id: 'troubled', emoji: '😣', label: '고민/이슈', score: -2, color: '#e53935' },
+  { id: 'great',    emoji: '😊', label: '좋음',      score:  2, color: '#2E7D32' },
+  { id: 'okay',     emoji: '🙂', label: '무난',      score:  1, color: '#66BB6A' },
+  { id: 'normal',   emoji: '😐', label: '보통',      score:  0, color: '#B0BEC5' },
+  { id: 'tired',    emoji: '😕', label: '피곤/지침', score: -1, color: '#FFCA28' },
+  { id: 'stressed', emoji: '😟', label: '스트레스',  score: -2, color: '#FF7043' },
+  { id: 'troubled', emoji: '😣', label: '고민/이슈', score: -2, color: '#D32F2F' },
 ];
 if (typeof ChartDataLabels !== 'undefined') {
   Chart.register(ChartDataLabels);
@@ -614,12 +612,13 @@ if (typeof ChartDataLabels !== 'undefined') {
 
 function emotionBarLabelColor(datasetIndex) {
   const id = EMOTIONS[datasetIndex].id;
-  if (id === 'normal') return '#0d1929';
+  if (id === 'okay' || id === 'normal' || id === 'tired') return '#0d1929';
   return '#ffffff';
 }
 function emotionBarLabelStroke(datasetIndex) {
   const id = EMOTIONS[datasetIndex].id;
-  return id === 'normal' ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.4)';
+  if (id === 'okay' || id === 'normal' || id === 'tired') return 'rgba(255,255,255,0.55)';
+  return 'rgba(0,0,0,0.45)';
 }
 const PW = 'xlookup_win';
 const STORAGE_KEY = 'tcd-v3';
